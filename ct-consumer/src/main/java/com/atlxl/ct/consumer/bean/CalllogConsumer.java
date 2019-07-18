@@ -44,6 +44,10 @@ public class CalllogConsumer implements Consumer {
 
                     // 插入数据到Hbase
                     dao.insertData(consumerRecord.value());
+
+                    // 通过对象的方式，插入数据到Hbase
+                    //Calllog log = new Calllog(consumerRecord.value());
+                    //dao.insertData(log);
                 }
             }
         } catch ( Exception e ) {

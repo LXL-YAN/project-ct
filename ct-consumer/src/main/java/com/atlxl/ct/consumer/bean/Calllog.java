@@ -1,14 +1,45 @@
 package com.atlxl.ct.consumer.bean;
 
+import com.atlxl.ct.common.api.Column;
+import com.atlxl.ct.common.api.Rowkey;
+import com.atlxl.ct.common.api.TableRef;
+
 /**
  * 通话日志
  */
+@TableRef("ct:calllog")
 public class Calllog {
+    @Rowkey
     private String rowkey;
+    @Column(family = "caller")
     private String call1;
+    @Column(family = "caller")
     private String call2;
+    @Column(family = "caller")
     private String calltime;
+    @Column(family = "caller")
     private String duration;
+    @Column(family = "caller")
+    private String flg = "1";
+
+    private String name;
+
+    public String getFlg() {
+        return flg;
+    }
+
+    public void setFlg(String flg) {
+        this.flg = flg;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
     public Calllog() {
 
     }

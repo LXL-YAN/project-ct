@@ -1,15 +1,20 @@
 package com.atlxl.ct.common.bean;
 
+import com.atlxl.ct.common.api.Column;
+import com.atlxl.ct.common.api.Rowkey;
+import com.atlxl.ct.common.api.TableRef;
 import com.atlxl.ct.common.constant.Names;
 import com.atlxl.ct.common.constant.ValueConstant;
+import com.atlxl.ct.common.util.DateUtil;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.*;
 import org.apache.hadoop.hbase.client.*;
 import org.apache.hadoop.hbase.util.Bytes;
+import org.apache.hadoop.hbase.util.Strings;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
+import java.lang.annotation.Annotation;
+import java.lang.reflect.Field;
+import java.util.*;
 
 /**
  * 基础的数据访问对象
@@ -93,6 +98,51 @@ public abstract class BaseDao {
     }
 
     /**
+     * 获取查询时startrow, stoprow集合
+     * @param tel
+     * @param start
+     * @param end
+     * @return
+     */
+    protected List<String[]> getStartStorRowkeys( String tel, String start, String end) {
+        List<String[]> rowkeyss = new ArrayList<String[]>();
+
+        String startTime = start.substring(0, 6);
+        String endTime = start.substring(0, 6);
+
+        Calendar startCal = Calendar.getInstance();
+        startCal.setTime(DateUtil.parse(startTime, "yyyyMM"));
+
+        Calendar endCal = Calendar.getInstance();
+        startCal.setTime(DateUtil.parse(endTime, "yyyyMM"));
+
+        while (startCal.getTimeInMillis() <= endCal.getTimeInMillis()) {
+            // 当前时间
+            String nowTime = DateUtil.fromat(startCal.getTime(), "yyyyMM");
+            int regionNum = genRegionNum(tel, nowTime);
+
+            // 1_133_201803 ~ 1_133_201803|
+            String startRow = regionNum + "_" + tel + "_" + nowTime;
+            String stopRow = startRow + "|";
+
+            String[] rowkeys = {startRow, stopRow};
+            rowkeyss.add(rowkeys);
+
+            // 月份+1
+            startCal.add(Calendar.MARCH, 1);
+        }
+
+        return rowkeyss;
+    }
+
+//    // 测试
+//    public static void main(String[] args) {
+//        for (String[] strings : getStartStorRowkeys("13301234567", "201806", "201901")) {
+//            System.out.println(strings[0] + "~" + strings[1]);
+//        }
+//    }
+
+    /**
      * 计算分区号
      * @param tel
      * @param date
@@ -134,10 +184,58 @@ public abstract class BaseDao {
             String splitKey = i + "|";
             bsList.add(Bytes.toBytes(splitKey));
         }
+//        Collections.sort(bsList, new Bytes.ByteArrayComparator()); //对分区键进行排序 这里可以不用加
 
         bsList.toArray(bs);
 
         return bs;
+    }
+
+    /**
+     * 增加对象：自动封装数据，将对象数据直接保存到hbase中
+     * @param obj
+     * @throws Exception
+     */
+    protected void putData(Object obj) throws Exception {
+
+        // 反射
+        Class clazz = obj.getClass();
+        TableRef tableRef = (TableRef)clazz.getAnnotation(TableRef.class);
+        String tableName = tableRef.value();
+        Field[] fs = clazz.getDeclaredFields();
+        String stringRowkey = "";
+        for (Field f : fs) {
+            Rowkey rowkey = f.getAnnotation(Rowkey.class);
+            if ( rowkey != null ) {
+                f.setAccessible(true);
+                stringRowkey = (String)f.get(obj);
+                break;
+            }
+        }
+        // 获取表对象
+        Connection conn = getConnection();
+        Table table = conn.getTable(TableName.valueOf(tableName));
+        Put put = new Put(Bytes.toBytes(stringRowkey));
+
+        for (Field f : fs) {
+            Column column = f.getAnnotation(Column.class);
+            if (column != null) {
+                String family = column.family();
+                String colName = column.column();
+                if ( colName == null || "".equals(colName)) {
+                    colName = f.getName();
+                }
+                f.setAccessible(true);
+                String value = (String)f.get(obj);
+                put.addColumn(Bytes.toBytes(family), Bytes.toBytes(colName), Bytes.toBytes(value));
+            }
+        }
+
+        // 增加数据
+        table.put(put);
+
+        // 关闭表
+        table.close();
     }
 
     /**
@@ -154,6 +252,25 @@ public abstract class BaseDao {
 
         // 增加数据
         table.put(put);
+
+        // 关闭表
+        table.close();
+    }
+
+    /**
+     * 增加多条数据
+     * @param name
+     * @param puts
+     * @throws Exception
+     */
+    protected void putData( String name, List<Put> puts) throws Exception {
+
+        // 获取表对象
+        Connection conn = getConnection();
+        Table table = conn.getTable(TableName.valueOf(name));
+
+        // 增加数据
+        table.put(puts);
 
         // 关闭表
         table.close();
